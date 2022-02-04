@@ -1,0 +1,93 @@
+
+<!doctype html>
+<html class="no-js">
+  <head>
+    <meta charset="utf-8">
+    <title>Html Game</title>
+    <meta name="description" content="">
+    <meta name="viewport" content="width=device-width">
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.6.3/css/font-awesome.min.css" />
+  </head>
+  <body ng-app="yapp">
+    <!-- Add your site or application content here -->
+    <div class="">
+	    <div id="msg-container">
+	    	
+	    </div>
+	    <p><input id="msg"></p>
+	    <p style="text-align-center;"><button id="send-msg">Send</button></p>
+    </div>
+    <script type="text/javascript" src="https://code.jquery.com/jquery-3.3.1.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/5.5.8/firebase.js"></script>
+    <script>
+      // Initialize Firebase
+       
+// 		var firebaseConfig = {
+// 			apiKey: "AIzaSyB4-JOBHODcDtIATqVDo1bzi_7vil54VP4",
+// 			authDomain: "ismf3-84942.firebaseapp.com",
+// 			databaseURL: "https://ismf3-84942-default-rtdb.firebaseio.com/",
+// 			projectId: "ismf3-84942",
+// 			storageBucket: "ismf3-84942.appspot.com",
+// 			messagingSenderId: "1046598300596",
+// 			appId: "1:1046598300596:web:908d03f47e987a6fcab8e1",
+// 			measurementId: "G-ELCS2WLD33"
+// 		  };
+//       firebase.initializeApp(firebaseConfig);
+	    
+    </script>
+	  <script type="module">
+  // Import the functions you need from the SDKs you need
+  //import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.6/firebase-app.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
+  // Your web app's Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyDKG2g_JD6iFH0qgTeOzCGdEZprHdL1B3c",
+    authDomain: "ism-chat-ea48a.firebaseapp.com",
+	databaseURL: "https://ism-chat-ea48a-default-rtdb.firebaseio.com/",
+    projectId: "ism-chat-ea48a",
+    storageBucket: "ism-chat-ea48a.appspot.com",
+    messagingSenderId: "902636413859",
+    appId: "1:902636413859:web:2496478a858c50b9adf016"
+  };
+
+  // Initialize Firebase
+  firebase.initializeApp(firebaseConfig);
+		  var today = new Date().toJSON().split('T');
+	var db = firebase.database().ref('/'+today);
+var clear = firebase.database().ref('/'+today+'/clear');	
+		  var clearval = new Date().getTime();
+		  $(document).ready(function(){
+			  
+			  $("#msg").click(function(){
+				  var val = $("#send-msg").val();
+				  if (val) {
+					 db.push({ts: new Date().getTime(), msg: val});
+				  }
+			  });
+			  
+			  $("#clear").click(function(){
+				  $("#msg-container").empty();
+				  clear.set(new Date().getTime());
+			  });
+			  
+			  db.on('value', function(v){
+				 $("#msg-container").empty();
+				  var val = v.val();
+				 Object.keys(val).forEach(a => {
+					 if (val[a].ts > clearval) {
+						 $("#msg-container").append('<p>'+val[a].msg+'</p>')
+					 }
+				 })
+			  });
+			  clear.on('value', function(v){
+				  if (v.val()) {  
+				 	clearval = v.val(); 
+				  }
+			  });
+		  });
+</script>
+  </body>
+</html>
