@@ -55,7 +55,7 @@
 
   // Initialize Firebase
   firebase.initializeApp(firebaseConfig);
-		  var today = new Date().toJSON().split('T');
+		  var today = new Date().toJSON().split('T')[0];
 	var db = firebase.database().ref('/'+today);
 var clear = firebase.database().ref('/'+today+'/clear');	
 		  var clearval = new Date().getTime();
