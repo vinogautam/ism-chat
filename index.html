@@ -33,7 +33,7 @@
     </script>
 	  <script type="module">
   // Import the functions you need from the SDKs you need
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.6/firebase-app.js";
+  //import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.6/firebase-app.js";
   // TODO: Add SDKs for Firebase products that you want to use
   // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -41,6 +41,7 @@
   const firebaseConfig = {
     apiKey: "AIzaSyDKG2g_JD6iFH0qgTeOzCGdEZprHdL1B3c",
     authDomain: "ism-chat-ea48a.firebaseapp.com",
+	databaseURL: "https://ism-chat-ea48a-default-rtdb.firebaseio.com/",
     projectId: "ism-chat-ea48a",
     storageBucket: "ism-chat-ea48a.appspot.com",
     messagingSenderId: "902636413859",
@@ -48,7 +49,7 @@
   };
 
   // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
+  firebase.initializeApp(firebaseConfig);
 </script>
   </body>
 </html>
