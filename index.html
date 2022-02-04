@@ -64,7 +64,8 @@ var clear = firebase.database().ref('/'+today+'/clear');
 			  $("#send-msg").click(function(){
 				  var val = $("#msg").val();
 				  if (val) {
-					 db.push({ts: new Date().getTime(), msg: val});
+					 db.push({sender: 1, ts: new Date().getTime(), msg: val});
+					  $("#msg").val('');
 				  }
 			  });
 			  
@@ -79,7 +80,11 @@ var clear = firebase.database().ref('/'+today+'/clear');
 				  if (val) {
 				 Object.keys(val).forEach(a => {
 					 if (val[a].ts > clearval) {
-						 $("#msg-container").append('<p>'+val[a].msg+'</p>')
+						 if (val[a].sender == 1) {
+						 	$("#msg-container").append('<p>'+val[a].msg+'</p>')
+						 } else {
+						 	$("#msg-container").append('<p style="text-align:right">'+val[a].msg+'</p>')
+						 }
 					 }
 				 })
 				  }
