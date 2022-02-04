@@ -76,11 +76,13 @@ var clear = firebase.database().ref('/'+today+'/clear');
 			  db.on('value', function(v){
 				 $("#msg-container").empty();
 				  var val = v.val();
+				  if (val) {
 				 Object.keys(val).forEach(a => {
 					 if (val[a].ts > clearval) {
 						 $("#msg-container").append('<p>'+val[a].msg+'</p>')
 					 }
 				 })
+				  }
 			  });
 			  clear.on('value', function(v){
 				  if (v.val()) {  
