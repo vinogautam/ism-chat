@@ -61,8 +61,8 @@ var clear = firebase.database().ref('/'+today+'/clear');
 		  var clearval = new Date().getTime();
 		  $(document).ready(function(){
 			  
-			  $("#msg").click(function(){
-				  var val = $("#send-msg").val();
+			  $("#send-msg").click(function(){
+				  var val = $("#msg").val();
 				  if (val) {
 					 db.push({ts: new Date().getTime(), msg: val});
 				  }
