@@ -56,16 +56,17 @@
 
   // Initialize Firebase
   firebase.initializeApp(firebaseConfig);
-		  var today = new Date().toJSON().split('T');
+		  var today = new Date().toJSON().split('T')[0];
 	var db = firebase.database().ref('/'+today);
 var clear = firebase.database().ref('/'+today+'/clear');	
-		  var clearval = new Date().getTime();
+		  var clearval = new Date(today+' 00:00').getTime();
 		  $(document).ready(function(){
 			  
-			  $("#msg").click(function(){
-				  var val = $("#send-msg").val();
+			  $("#send-msg").click(function(){
+				  var val = $("#msg").val();
 				  if (val) {
-					 db.push({ts: new Date().getTime(), msg: val});
+					 db.push({sender: 1, ts: new Date().getTime(), msg: val});
+					  $("#msg").val('');
 				  }
 			  });
 			  
@@ -77,11 +78,17 @@ var clear = firebase.database().ref('/'+today+'/clear');
 			  db.on('value', function(v){
 				 $("#msg-container").empty();
 				  var val = v.val();
+				  if (val) {
 				 Object.keys(val).forEach(a => {
 					 if (val[a].ts > clearval) {
-						 $("#msg-container").append('<p>'+val[a].msg+'</p>')
+						 if (val[a].sender == 1) {
+						 	$("#msg-container").append('<p>'+val[a].msg+'</p>')
+						 } else {
+						 	$("#msg-container").append('<p style="text-align:right">'+val[a].msg+'</p>')
+						 }
 					 }
 				 })
+				  }
 			  });
 			  clear.on('value', function(v){
 				  if (v.val()) {  
