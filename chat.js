@@ -77,6 +77,10 @@
   var pushTokenRef = null;
   var pushReady = false;
   var swReg = null;
+  /* Not persisted: a page refresh always returns to today's messages. */
+  var historyMode = false;
+  var historyLoading = false;
+  var historyOlder = [];
 
   /* ---------- helpers ---------- */
 
@@ -161,13 +165,19 @@
   /* ---------- rendering ---------- */
 
   function visibleMessages() {
-    return messages
-      .filter(function (m) {
-        return m.ts > clearval;
-      })
-      .sort(function (a, b) {
-        return a.ts - b.ts;
-      });
+    var list = historyMode
+      ? historyOlder.concat(messages)
+      : messages.filter(function (m) {
+          return m.ts > clearval;
+        });
+    return list.sort(function (a, b) {
+      return a.ts - b.ts;
+    });
+  }
+
+  function dayKey(ts) {
+    var d = new Date(ts);
+    return d.getFullYear() + "/" + d.getMonth() + "/" + d.getDate();
   }
 
   function render() {
@@ -175,26 +185,36 @@
     var stick = nearBottom();
 
     if (!list.length) {
-      el.list.innerHTML =
-        '<div class="empty"><strong>No messages yet</strong>' +
-        "Say hi to " +
-        escapeHtml(peerName) +
-        " — messages reset every day.</div>";
+      el.list.innerHTML = historyMode
+        ? '<div class="empty"><strong>No history found</strong>' +
+          "Nothing saved for the past days.</div>"
+        : '<div class="empty"><strong>No messages yet</strong>' +
+          "Say hi to " +
+          escapeHtml(peerName) +
+          " — messages reset every day.</div>";
       updateBadges(list);
       return;
     }
 
-    var html = '<div class="day-divider"><span>' + dayLabel(list[0].ts) + "</span></div>";
+    var html = "";
     var dividerDone = false;
+    var lastDay = "";
 
     list.forEach(function (m, i) {
       var mine = m.sender === ME;
-      if (!mine && !dividerDone && m.ts > unreadFrom) {
+      var thisDay = dayKey(m.ts);
+      var newDay = thisDay !== lastDay;
+      if (newDay) {
+        html += '<div class="day-divider"><span>' + dayLabel(m.ts) + "</span></div>";
+        lastDay = thisDay;
+      }
+      if (!historyMode && !mine && !dividerDone && m.ts > unreadFrom) {
         html += '<div class="unread-divider"><span>Unread messages</span></div>';
         dividerDone = true;
       }
       var prev = list[i - 1];
       var grouped =
+        !newDay &&
         prev && prev.sender === m.sender && m.ts - prev.ts < 3 * 60 * 1000 &&
         !(dividerDone && !mine && prev.ts <= unreadFrom);
 
@@ -251,6 +271,95 @@
       ? "online"
       : lastSeenLabel(peerLastSeen);
     render();
+  }
+
+  /* ---------- full history ---------- */
+
+  /* Typing this phrase in the composer opens every stored day instead of
+     sending it, including messages hidden by "clear chat". */
+  var HISTORY_PHRASE = "neeyum naanum";
+
+  function isHistoryPhrase(text) {
+    return text.toLowerCase().replace(/\s+/g, " ").trim() === HISTORY_PHRASE;
+  }
+
+  function dayMessages(dayVal) {
+    if (!dayVal || typeof dayVal !== "object") return [];
+    return Object.keys(dayVal)
+      .map(function (k) {
+        return dayVal[k];
+      })
+      .filter(function (m) {
+        return m && typeof m === "object" && m.ts && m.msg;
+      });
+  }
+
+  function isDateKey(key) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(key);
+  }
+
+  function loadHistoryFromRoot() {
+    return db
+      .ref("/")
+      .once("value")
+      .then(function (snap) {
+        var val = snap.val() || {};
+        var out = [];
+        Object.keys(val).forEach(function (k) {
+          if (!isDateKey(k) || k === today) return;
+          out = out.concat(dayMessages(val[k]));
+        });
+        return out;
+      });
+  }
+
+  /* Fallback for rules that deny reading the database root. */
+  function loadHistoryByDay() {
+    var base = Date.parse(today + "T00:00:00Z");
+    var jobs = [];
+    for (var i = 1; i <= 120; i++) {
+      var key = new Date(base - i * 86400000).toISOString().split("T")[0];
+      jobs.push(db.ref("/" + key).once("value"));
+    }
+    return Promise.all(jobs).then(function (snaps) {
+      var out = [];
+      snaps.forEach(function (snap) {
+        out = out.concat(dayMessages(snap.val()));
+      });
+      return out;
+    });
+  }
+
+  function enterHistory() {
+    if (historyLoading || historyMode) return;
+    historyLoading = true;
+    loadHistoryFromRoot()
+      .catch(loadHistoryByDay)
+      .then(function (older) {
+        historyOlder = older;
+        historyMode = true;
+        historyLoading = false;
+        render();
+        scrollToBottom(false);
+      })
+      .catch(function (err) {
+        historyLoading = false;
+        alert(
+          "Could not load history: " + ((err && err.message) || "unknown error")
+        );
+      });
+  }
+
+  function exitHistory() {
+    historyMode = false;
+    historyOlder = [];
+    render();
+    scrollToBottom(false);
+  }
+
+  function toggleHistory() {
+    if (historyMode) exitHistory();
+    else enterHistory();
   }
 
   /* ---------- read receipts ---------- */
@@ -952,6 +1061,14 @@
   function sendMessage() {
     var val = el.input.value.trim();
     if (!val) return;
+    if (isHistoryPhrase(val)) {
+      el.input.value = "";
+      el.send.disabled = true;
+      stopTyping();
+      toggleHistory();
+      el.input.focus();
+      return;
+    }
     msgsRef.push({ sender: ME, ts: new Date().getTime(), msg: val });
     el.input.value = "";
     el.send.disabled = true;
