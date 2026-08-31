@@ -25,6 +25,7 @@
   var cfg = window.CHAT_CONFIG || {};
   var ME = cfg.me === 2 ? 2 : 1;
   var PEER = ME === 1 ? 2 : 1;
+  var PUSH_VAPID_KEY = cfg.pushVapidKey || "";
 
   var today = new Date().toJSON().split("T")[0];
   var db = firebase.database();
@@ -50,7 +51,8 @@
     jumpCount: document.getElementById("jump-count"),
     peerName: document.getElementById("peer-name"),
     avatar: document.getElementById("peer-avatar"),
-    callBtn: document.getElementById("call-btn")
+    callBtn: document.getElementById("call-btn"),
+    notifBtn: document.getElementById("notif-btn")
   };
 
   var peerName = cfg.peerName || "Friend";
@@ -68,6 +70,13 @@
   var peerTyping = false;
   var pendingNew = 0;
   var pillDismissed = false;
+  var notifyEnabled = localStorage.getItem("ismChatNotify") === "1";
+  var notifiedUpTo = 0;
+  var activeNotif = null;
+  var messaging = null;
+  var pushTokenRef = null;
+  var pushReady = false;
+  var swReg = null;
 
   /* ---------- helpers ---------- */
 
@@ -256,6 +265,230 @@
       myRead = last;
       myReadRef.set(last);
       updateBadges(visibleMessages());
+    }
+  }
+
+  /* ---------- notifications ---------- */
+
+  /* Notifications never carry message text: the peer name and a count only. */
+  function notifySupported() {
+    return "Notification" in window;
+  }
+
+  function notifyOn() {
+    return notifyEnabled && notifySupported() && Notification.permission === "granted";
+  }
+
+  function updateNotifBtn() {
+    if (!el.notifBtn) return;
+    var on = notifyOn();
+    el.notifBtn.classList.toggle("is-on", on);
+    el.notifBtn.title = on ? "Notifications on" : "Notifications off";
+    el.notifBtn.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+
+  function toggleNotifications() {
+    if (!notifySupported()) {
+      alert("This browser does not support notifications.");
+      return;
+    }
+    if (notifyOn()) {
+      notifyEnabled = false;
+      localStorage.setItem("ismChatNotify", "0");
+      unregisterPushToken();
+      updateNotifBtn();
+      return;
+    }
+    if (Notification.permission === "denied") {
+      alert(
+        "Notifications are blocked for this site. Allow them in your browser's site settings."
+      );
+      return;
+    }
+    Notification.requestPermission().then(function (perm) {
+      notifyEnabled = perm === "granted";
+      localStorage.setItem("ismChatNotify", notifyEnabled ? "1" : "0");
+      updateNotifBtn();
+      if (!notifyEnabled) return;
+      showNotification("Notifications on", "You'll be alerted about new messages.", true);
+      registerPushToken().catch(function (err) {
+        console.warn("Background push is not ready:", err);
+      });
+    });
+  }
+
+  function tokenKey(token) {
+    var hash = 2166136261;
+    for (var i = 0; i < token.length; i++) {
+      hash ^= token.charCodeAt(i);
+      hash +=
+        (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+    }
+    return "t" + (hash >>> 0).toString(36);
+  }
+
+  function validVapidKey() {
+    return (
+      PUSH_VAPID_KEY &&
+      PUSH_VAPID_KEY !== "PASTE_FIREBASE_WEB_PUSH_VAPID_KEY_HERE"
+    );
+  }
+
+  function thisPage() {
+    return ME === 1 ? "index.html" : "me.html";
+  }
+
+  function ensureServiceWorker() {
+    if (swReg) return Promise.resolve(swReg);
+    if (!("serviceWorker" in navigator)) {
+      return Promise.reject(new Error("No service worker"));
+    }
+    return navigator.serviceWorker
+      .register("./firebase-messaging-sw.js")
+      .then(function (registration) {
+        swReg = registration;
+        return registration;
+      });
+  }
+
+  function savePushToken(token) {
+    var key = tokenKey(token);
+    pushTokenRef = db.ref("/pushTokens/u" + ME + "/" + key);
+    return pushTokenRef
+      .set({
+        token: token,
+        page: thisPage(),
+        updated: firebase.database.ServerValue.TIMESTAMP
+      })
+      .then(function () {
+        pushReady = true;
+      });
+  }
+
+  function registerPushToken() {
+    if (!notifyOn()) return Promise.reject(new Error("Notifications are off."));
+    if (!("serviceWorker" in navigator) || !firebase.messaging) {
+      return Promise.reject(new Error("Background push is unsupported."));
+    }
+    return ensureServiceWorker().then(function (registration) {
+      messaging = firebase.messaging();
+      messaging.useServiceWorker(registration);
+      if (validVapidKey()) messaging.usePublicVapidKey(PUSH_VAPID_KEY);
+      return messaging.getToken();
+    })
+      .then(function (token) {
+        if (!token) throw new Error("FCM did not return a device token.");
+        return savePushToken(token);
+      });
+  }
+
+  function unregisterPushToken() {
+    pushReady = false;
+    var remove = pushTokenRef ? pushTokenRef.remove() : Promise.resolve();
+    pushTokenRef = null;
+    if (messaging) {
+      remove.then(function () {
+        return messaging.getToken();
+      }).then(function (token) {
+        if (token) messaging.deleteToken(token);
+      }).catch(function () {});
+    }
+  }
+
+  function notificationOptions(body) {
+    return {
+      body: body,
+      tag: "ism-chat",
+      renotify: true,
+      data: { page: thisPage() }
+    };
+  }
+
+  function showViaConstructor(title, body) {
+    try {
+      activeNotif = new Notification(title, notificationOptions(body));
+      activeNotif.onclick = function () {
+        window.focus();
+        closeNotification();
+        markRead();
+      };
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function showViaServiceWorker(title, body) {
+    return ensureServiceWorker().then(function (registration) {
+      return registration.showNotification(title, notificationOptions(body));
+    });
+  }
+
+  function needsServiceWorkerNotify() {
+    return /Android/i.test(navigator.userAgent);
+  }
+
+  function showNotification(title, body, force) {
+    if (!notifyOn()) return;
+    if (!force && visible() && document.hasFocus()) return;
+    closeNotification();
+    if (needsServiceWorkerNotify()) {
+      showViaServiceWorker(title, body).catch(function () {
+        showViaConstructor(title, body);
+      });
+      return;
+    }
+    if (!showViaConstructor(title, body)) {
+      showViaServiceWorker(title, body).catch(function () {});
+    }
+  }
+
+  function closeNotification() {
+    if (activeNotif) {
+      try {
+        activeNotif.close();
+      } catch (e) {}
+      activeNotif = null;
+    }
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.getRegistration().then(function (registration) {
+      if (!registration || !registration.getNotifications) return;
+      return registration.getNotifications({ tag: "ism-chat" }).then(function (list) {
+        list.forEach(function (n) {
+          n.close();
+        });
+      });
+    }).catch(function () {});
+  }
+
+  function notifyNewMessages(list) {
+    var fresh = list.filter(function (m) {
+      return m.sender === PEER && m.ts > notifiedUpTo;
+    });
+    if (!fresh.length) return;
+    fresh.forEach(function (m) {
+      if (m.ts > notifiedUpTo) notifiedUpTo = m.ts;
+    });
+    if (pushReady) return;
+    showNotification(
+      fresh.length > 1 ? fresh.length + " new messages" : "New message",
+      peerName + " — open the chat to read."
+    );
+  }
+
+  function initNotifications() {
+    notifiedUpTo = Date.now();
+    if (!notifySupported()) {
+      if (el.notifBtn) el.notifBtn.hidden = true;
+      return;
+    }
+    if (el.notifBtn) el.notifBtn.addEventListener("click", toggleNotifications);
+    updateNotifBtn();
+    if (notifyOn()) {
+      ensureServiceWorker().catch(function () {});
+      registerPushToken().catch(function (err) {
+        console.warn("Background push is not ready:", err);
+      });
     }
   }
 
@@ -694,6 +927,7 @@
       callRole = "callee";
       showCallUi("incoming", "Incoming voice call");
       startRingtone();
+      showNotification("Incoming voice call", peerName + " is calling.");
     }
     if (v.from === ME && v.status === "accepted" && callRole === "caller" && v.answer && pc && !appliedAnswer) {
       appliedAnswer = true;
@@ -764,13 +998,20 @@
     });
   }
 
-  document.addEventListener("visibilitychange", markRead);
-  window.addEventListener("focus", markRead);
+  document.addEventListener("visibilitychange", function () {
+    if (visible()) closeNotification();
+    markRead();
+  });
+  window.addEventListener("focus", function () {
+    closeNotification();
+    markRead();
+  });
 
   /* ---------- start ---------- */
 
   function start() {
     myRead = unreadFrom;
+    initNotifications();
     initPresence();
     initCall();
 
@@ -801,6 +1042,7 @@
       if (!atBottom && messages.length > prevCount) {
         pendingNew += messages.length - prevCount;
       }
+      notifyNewMessages(visibleMessages());
       render();
       if (atBottom) scrollToBottom(false);
       markRead();

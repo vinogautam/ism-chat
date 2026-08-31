@@ -1,0 +1,17 @@
+{
+  "rules": {
+    "$root": {
+      ".read": "$root !== 'pushTokens'",
+      ".write": true
+    },
+    "pushTokens": {
+      ".read": false,
+      "$user": {
+        "$device": {
+          ".write": true,
+          ".validate": "!newData.exists() || (newData.hasChildren(['token', 'page', 'updated']) && newData.child('token').isString() && newData.child('token').val().length <= 512 && (newData.child('page').val() === 'index.html' || newData.child('page').val() === 'me.html'))"
+        }
+      }
+    }
+  }
+}

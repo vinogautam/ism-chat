@@ -427,6 +427,11 @@ body {
   transform: none;
 }
 
+.icon-btn.is-on {
+  color: var(--accent);
+  background: rgba(0, 168, 132, 0.12);
+}
+
 .icon-btn.call-active {
   color: #24d366;
   background: rgba(36, 211, 102, 0.12);

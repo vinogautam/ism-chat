@@ -6,6 +6,7 @@
     <meta name="description" content="Realtime chat">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#111b21">
+    <link rel="manifest" href="manifest.webmanifest">
     <link rel="stylesheet" href="chat.css">
   </head>
   <body>
@@ -13,13 +14,19 @@
       <header class="chat-header">
         <div class="avatar" id="peer-avatar">F</div>
         <div class="peer">
-          <span class="peer-name" id="peer-name">Friend</span>
+          <span class="peer-name" id="peer-name">KiVI</span>
           <span class="peer-status" id="peer-status">
             <i class="dot"></i><span id="peer-status-text">connecting…</span>
           </span>
         </div>
         <div class="header-actions">
           <span class="unread-pill" id="unread-pill" hidden>0</span>
+          <button class="icon-btn" id="notif-btn" type="button" title="Notifications off" aria-label="Toggle notifications" aria-pressed="false">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/>
+              <path d="M13.7 21a2 2 0 0 1-3.4 0"/>
+            </svg>
+          </button>
           <button class="icon-btn" id="call-btn" type="button" title="Voice call" aria-label="Voice call">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.81.36 1.6.7 2.34a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.74-1.27a2 2 0 0 1 2.11-.45c.74.34 1.53.57 2.34.7A2 2 0 0 1 22 16.92z"/>
@@ -53,7 +60,14 @@
     </div>
 
     <script src="https://www.gstatic.com/firebasejs/5.5.8/firebase.js"></script>
-    <script>window.CHAT_CONFIG = { me: 1, peerName: "Friend" };</script>
+    <script src="https://www.gstatic.com/firebasejs/5.5.8/firebase-messaging.js"></script>
+    <script>
+      window.CHAT_CONFIG = {
+        me: 1,
+        peerName: "Friend",
+        pushVapidKey: "BBFHtCaFg9BEQjyDw_KY2favK87DqskwCANMgSDISrVVokNudnLi6hQjXv9M9RUun94Go7CkXgQQ8GrhUiZ-Lgk"
+      };
+    </script>
     <script src="chat.js"></script>
   </body>
 </html>
