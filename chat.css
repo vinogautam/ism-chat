@@ -154,6 +154,7 @@ body {
 .messages {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
   padding: 14px 16px 6px;
   display: flex;
@@ -226,6 +227,11 @@ body {
   background: var(--bubble-you);
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.28);
   animation: pop 0.16s ease-out;
+  transition: transform 0.18s ease;
+}
+
+.row.dragging .bubble {
+  transition: none;
 }
 
 .row.me .bubble {
@@ -291,6 +297,113 @@ body {
 
 .tick.read {
   color: var(--tick);
+}
+
+/* Quoted reply inside a bubble */
+.quote {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: 4px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  border-left: 4px solid var(--tick);
+  background: rgba(0, 0, 0, 0.24);
+  cursor: pointer;
+}
+
+.quote.by-me {
+  border-left-color: #64d2b3;
+}
+
+.quote-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--tick);
+}
+
+.quote.by-me .quote-name {
+  color: #64d2b3;
+}
+
+.quote-text {
+  font-size: 13px;
+  color: rgba(233, 237, 239, 0.62);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Reply affordances: hover button on desktop, swipe on touch */
+.reply-act {
+  position: absolute;
+  top: 50%;
+  right: -34px;
+  margin-top: -13px;
+  width: 26px;
+  height: 26px;
+  display: none;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.38);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.row.me .reply-act {
+  right: auto;
+  left: -34px;
+}
+
+.reply-act svg {
+  width: 14px;
+  height: 14px;
+}
+
+@media (hover: hover) {
+  .row:hover .reply-act {
+    display: grid;
+  }
+}
+
+.bubble::before {
+  content: "";
+  position: absolute;
+  left: -38px;
+  top: 50%;
+  margin-top: -13px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14)
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23e9edef' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M9 14 4 9l5-5'/><path d='M4 9h10a6 6 0 0 1 6 6v4'/></svg>")
+    center / 15px no-repeat;
+  opacity: 0;
+  transform: scale(0.5);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  pointer-events: none;
+}
+
+.row.swipe-ready .bubble::before {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.row.flash .bubble {
+  animation: flash 1.3s ease-out;
+}
+
+@keyframes flash {
+  0%,
+  100% {
+    box-shadow: 0 1px 1px rgba(0, 0, 0, 0.28);
+  }
+  25%,
+  60% {
+    box-shadow: 0 0 0 3px rgba(0, 168, 132, 0.55);
+  }
 }
 
 .empty {
@@ -370,6 +483,62 @@ body {
 
 .chat-app {
   position: relative;
+}
+
+/* Reply preview above the composer */
+.reply-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px 0;
+  background: var(--header);
+  border-top: 1px solid var(--divider);
+  animation: slide-up 0.14s ease-out;
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+.reply-bar:not([hidden]) + .composer {
+  border-top: 0;
+}
+
+.reply-bar-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border-left: 4px solid var(--tick);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.reply-bar.mine .reply-bar-body {
+  border-left-color: #64d2b3;
+}
+
+.reply-bar-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--tick);
+}
+
+.reply-bar.mine .reply-bar-name {
+  color: #64d2b3;
+}
+
+.reply-bar-text {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Composer */

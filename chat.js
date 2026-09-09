@@ -3,7 +3,7 @@
  * before loading this file. Sender 1 = index.html, sender 2 = me.html.
  *
  * Realtime DB layout:
- *   /<yyyy-mm-dd>/<pushId>  -> { sender, ts, msg }
+ *   /<yyyy-mm-dd>/<pushId>  -> { sender, ts, msg, reply?: { id, sender, text } }
  *   /<yyyy-mm-dd>/clear     -> ts of the last "clear chat"
  *   /presence/u<id>         -> { online, lastSeen }
  *   /typing/u<id>           -> true while composing
@@ -52,7 +52,11 @@
     peerName: document.getElementById("peer-name"),
     avatar: document.getElementById("peer-avatar"),
     callBtn: document.getElementById("call-btn"),
-    notifBtn: document.getElementById("notif-btn")
+    notifBtn: document.getElementById("notif-btn"),
+    replyBar: document.getElementById("reply-bar"),
+    replyName: document.getElementById("reply-bar-name"),
+    replyText: document.getElementById("reply-bar-text"),
+    replyCancel: document.getElementById("reply-cancel")
   };
 
   var peerName = cfg.peerName || "Friend";
@@ -81,6 +85,8 @@
   var historyMode = false;
   var historyLoading = false;
   var historyOlder = [];
+  var replyTo = null;
+  var flashTimer = null;
 
   /* ---------- helpers ---------- */
 
@@ -130,6 +136,19 @@
     return "last seen " + label.toLowerCase() + " at " + fmtTime(ts);
   }
 
+  function quotePreview(s) {
+    var one = String(s || "").replace(/\s+/g, " ").trim();
+    return one.length > 120 ? one.slice(0, 119) + "…" : one;
+  }
+
+  function closestSel(node, sel) {
+    while (node && node !== el.list) {
+      if (node.matches && node.matches(sel)) return node;
+      node = node.parentNode;
+    }
+    return null;
+  }
+
   function nearBottom() {
     return el.list.scrollHeight - el.list.scrollTop - el.list.clientHeight < 80;
   }
@@ -163,6 +182,26 @@
   }
 
   /* ---------- rendering ---------- */
+
+  var REPLY_BTN =
+    '<button class="reply-act" type="button" title="Reply" aria-label="Reply">' +
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+    'stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v4"/></svg></button>';
+
+  function quoteHtml(reply) {
+    return (
+      '<div class="quote ' +
+      (reply.sender === ME ? "by-me" : "by-you") +
+      '" data-jump="' +
+      escapeHtml(reply.id || "") +
+      '"><span class="quote-name">' +
+      escapeHtml(reply.sender === ME ? "You" : peerName) +
+      '</span><span class="quote-text">' +
+      escapeHtml(quotePreview(reply.text)) +
+      "</span></div>"
+    );
+  }
 
   function visibleMessages() {
     var list = historyMode
@@ -213,8 +252,10 @@
         dividerDone = true;
       }
       var prev = list[i - 1];
+      var quoted = m.reply && m.reply.text ? m.reply : null;
       var grouped =
         !newDay &&
+        !quoted &&
         prev && prev.sender === m.sender && m.ts - prev.ts < 3 * 60 * 1000 &&
         !(dividerDone && !mine && prev.ts <= unreadFrom);
 
@@ -222,13 +263,19 @@
         '<div class="row ' +
         (mine ? "me" : "you") +
         (grouped ? " grouped" : "") +
-        '"><div class="bubble"><div class="text">' +
+        '" data-id="' +
+        escapeHtml(m.id || "") +
+        '"><div class="bubble">' +
+        (quoted ? quoteHtml(quoted) : "") +
+        '<div class="text">' +
         linkify(escapeHtml(m.msg)) +
         '</div><div class="meta"><span class="time">' +
         fmtTime(m.ts) +
         "</span>" +
         (mine ? tickHtml(m) : "") +
-        "</div></div></div>";
+        "</div>" +
+        REPLY_BTN +
+        "</div></div>";
     });
 
     if (peerTyping) {
@@ -273,6 +320,153 @@
     render();
   }
 
+  /* ---------- replies ---------- */
+
+  /* A reply keeps a copy of the quoted text so it survives "clear chat" and
+     day rollover, plus the original id so tapping the quote can jump to it. */
+  function messageById(id) {
+    if (!id) return null;
+    var list = visibleMessages();
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === id) return list[i];
+    }
+    return null;
+  }
+
+  function renderReplyBar() {
+    if (!el.replyBar) return;
+    if (!replyTo) {
+      el.replyBar.hidden = true;
+      return;
+    }
+    el.replyBar.hidden = false;
+    el.replyBar.classList.toggle("mine", replyTo.sender === ME);
+    el.replyName.textContent = replyTo.sender === ME ? "You" : peerName;
+    el.replyText.textContent = quotePreview(replyTo.text);
+  }
+
+  function startReply(m) {
+    if (!m) return;
+    replyTo = { id: m.id || "", sender: m.sender, text: quotePreview(m.msg) };
+    renderReplyBar();
+    el.input.focus();
+  }
+
+  function cancelReply() {
+    replyTo = null;
+    renderReplyBar();
+  }
+
+  function replyToRow(row) {
+    if (row) startReply(messageById(row.getAttribute("data-id")));
+  }
+
+  function jumpToMessage(id) {
+    if (!id) return;
+    var node = el.list.querySelector('.row[data-id="' + id + '"]');
+    if (!node) return;
+    node.scrollIntoView({ block: "center", behavior: "smooth" });
+    clearTimeout(flashTimer);
+    var prev = el.list.querySelector(".row.flash");
+    if (prev) prev.classList.remove("flash");
+    node.classList.add("flash");
+    flashTimer = setTimeout(function () {
+      node.classList.remove("flash");
+    }, 1400);
+  }
+
+  function initReply() {
+    if (el.replyCancel) el.replyCancel.addEventListener("click", cancelReply);
+
+    el.list.addEventListener("click", function (e) {
+      var quote = closestSel(e.target, ".quote");
+      if (quote) {
+        jumpToMessage(quote.getAttribute("data-jump"));
+        return;
+      }
+      if (closestSel(e.target, ".reply-act")) {
+        replyToRow(closestSel(e.target, ".row"));
+      }
+    });
+
+    el.list.addEventListener("dblclick", function (e) {
+      if (closestSel(e.target, "a")) return;
+      replyToRow(closestSel(e.target, ".row"));
+    });
+
+    initSwipeReply();
+  }
+
+  /* Swipe a bubble to the right to reply, like WhatsApp. */
+  var SWIPE_TRIGGER = 42;
+  var swipe = null;
+
+  function resetSwipe() {
+    if (!swipe) return null;
+    var s = swipe;
+    swipe = null;
+    s.row.classList.remove("dragging", "swipe-ready");
+    s.bubble.style.transform = "";
+    return s;
+  }
+
+  function endSwipe() {
+    var s = resetSwipe();
+    if (s && s.locked && s.dx >= SWIPE_TRIGGER) {
+      if (navigator.vibrate) navigator.vibrate(12);
+      replyToRow(s.row);
+    }
+  }
+
+  function initSwipeReply() {
+    el.list.addEventListener(
+      "touchstart",
+      function (e) {
+        resetSwipe();
+        if (e.touches.length !== 1) return;
+        var row = closestSel(e.target, ".row");
+        var bubble = row && row.querySelector(".bubble");
+        if (!bubble) return;
+        swipe = {
+          row: row,
+          bubble: bubble,
+          x: e.touches[0].clientX,
+          y: e.touches[0].clientY,
+          dx: 0,
+          locked: false,
+          cancelled: false
+        };
+      },
+      { passive: true }
+    );
+
+    el.list.addEventListener(
+      "touchmove",
+      function (e) {
+        if (!swipe || swipe.cancelled || e.touches.length !== 1) return;
+        var dx = e.touches[0].clientX - swipe.x;
+        var dy = e.touches[0].clientY - swipe.y;
+        if (!swipe.locked) {
+          if (Math.abs(dy) > 8 && Math.abs(dy) >= Math.abs(dx)) {
+            swipe.cancelled = true;
+            return;
+          }
+          if (dx < 12 || dx <= Math.abs(dy)) return;
+          swipe.locked = true;
+          swipe.row.classList.add("dragging");
+        }
+        swipe.dx = Math.max(0, Math.min(dx * 0.55, 64));
+        swipe.bubble.style.transform = "translateX(" + swipe.dx + "px)";
+        swipe.row.classList.toggle("swipe-ready", swipe.dx >= SWIPE_TRIGGER);
+        if (e.cancelable) e.preventDefault();
+      },
+      { passive: false }
+    );
+
+    el.list.addEventListener("touchend", endSwipe);
+    el.list.addEventListener("touchcancel", endSwipe);
+  }
+
   /* ---------- full history ---------- */
 
   /* Typing this phrase in the composer opens every stored day instead of
@@ -283,11 +477,16 @@
     return text.toLowerCase().replace(/\s+/g, " ").trim() === HISTORY_PHRASE;
   }
 
+  function withId(m, key) {
+    if (m && typeof m === "object") m.id = key;
+    return m;
+  }
+
   function dayMessages(dayVal) {
     if (!dayVal || typeof dayVal !== "object") return [];
     return Object.keys(dayVal)
       .map(function (k) {
-        return dayVal[k];
+        return withId(dayVal[k], k);
       })
       .filter(function (m) {
         return m && typeof m === "object" && m.ts && m.msg;
@@ -1069,7 +1268,16 @@
       el.input.focus();
       return;
     }
-    msgsRef.push({ sender: ME, ts: new Date().getTime(), msg: val });
+    var payload = { sender: ME, ts: new Date().getTime(), msg: val };
+    if (replyTo) {
+      payload.reply = {
+        id: replyTo.id,
+        sender: replyTo.sender,
+        text: replyTo.text
+      };
+    }
+    msgsRef.push(payload);
+    cancelReply();
     el.input.value = "";
     el.send.disabled = true;
     stopTyping();
@@ -1087,6 +1295,13 @@
     el.send.disabled = !el.input.value.trim();
     if (el.input.value.trim()) signalTyping();
     else stopTyping();
+  });
+
+  el.input.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && replyTo) {
+      e.preventDefault();
+      cancelReply();
+    }
   });
 
   el.input.addEventListener("focus", function () {
@@ -1131,6 +1346,7 @@
     initNotifications();
     initPresence();
     initCall();
+    initReply();
 
     peerReadRef.on("value", function (snap) {
       peerRead = snap.val() || 0;
@@ -1149,7 +1365,7 @@
       var prevCount = messages.length;
       messages = Object.keys(val)
         .map(function (k) {
-          return val[k];
+          return withId(val[k], k);
         })
         .filter(function (m) {
           return m && typeof m === "object" && m.ts && m.msg;
