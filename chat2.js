@@ -318,7 +318,7 @@
       ? "typing…"
       : peerOnline
       ? "online"
-      : lastSeenLabel(1789877640000);
+      : lastSeenLabel(1789964040000);
     render();
   }
 
